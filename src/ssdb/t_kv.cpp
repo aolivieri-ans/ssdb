@@ -5,6 +5,43 @@ found in the LICENSE file.
 */
 #include "t_kv.h"
 
+int SSDBImpl::incrwithlimit(const Bytes &key, int64_t by, int64_t limit, int64_t start, int64_t *new_val, char log_type){
+
+	if(key.size() > SSDB_KEY_LEN_MAX ){
+		log_error("name too long! %s", hexmem(key.data(), key.size()).c_str());
+		return -1;
+	}
+	Transaction trans(binlogs);
+
+	std::string old;
+	int ret = this->get(key, &old);
+	int64_t val = -1;
+	*new_val = -1;
+	if(ret == -1){
+		return -1;
+	}else if(ret == 0){
+		val = by; //starts from zero
+	}else{
+		val = str_to_int64(old) + by;
+	}
+	
+	if (val > limit){
+		val = start;
+		*new_val = start;
+	}
+
+	std::string buf = encode_kv_key(key);
+	binlogs->Put(buf, str(val));
+	binlogs->add_log(log_type, BinlogCommand::KSET, buf);
+
+	leveldb::Status s = binlogs->commit();
+	if(!s.ok()){
+		log_error("del error: %s", s.ToString().c_str());
+		return -1;
+	}
+	return 1;
+}
+
 int SSDBImpl::multi_set(const std::vector<Bytes> &kvs, int offset, char log_type){
 	Transaction trans(binlogs);
 

@@ -10,6 +10,7 @@ found in the LICENSE file.
 #include "net/proc.h"
 #include "net/server.h"
 
+DEF_PROC(resetsync);
 DEF_PROC(get);
 DEF_PROC(set);
 DEF_PROC(setx);
@@ -24,6 +25,7 @@ DEF_PROC(strlen);
 DEF_PROC(bitcount);
 DEF_PROC(del);
 DEF_PROC(incr);
+DEF_PROC(incrwithlimit);
 DEF_PROC(decr);
 DEF_PROC(scan);
 DEF_PROC(rscan);
@@ -150,6 +152,7 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(strlen, "rt");
 	REG_PROC(bitcount, "rt");
 	REG_PROC(incr, "wt");
+	REG_PROC(incrwithlimit, "wt");	
 	REG_PROC(decr, "wt");
 	REG_PROC(scan, "rt");
 	REG_PROC(rscan, "rt");
@@ -261,6 +264,8 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(cluster_set_kv_range, "r");
 	REG_PROC(cluster_set_kv_status, "r");
 	REG_PROC(cluster_migrate_kv_data, "r");
+	
+	REG_PROC(resetsync, "w");		
 }
 
 
@@ -271,10 +276,11 @@ SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer
 	net->data = this;
 	this->reg_procs(net);
 
-	int sync_speed = conf.get_num("replication.sync_speed");
+	this->cfg = &conf;
+	this->sync_speed = conf.get_num("replication.sync_speed");
 
 	backend_dump = new BackendDump(this->ssdb);
-	backend_sync = new BackendSync(this->ssdb, sync_speed);
+	backend_sync = new BackendSync(this->ssdb, this->sync_speed);
 	expiration = new ExpirationHandler(this->ssdb);
 	
 	cluster = new Cluster(this->ssdb);
@@ -339,6 +345,76 @@ SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer
 		);
 }
 
+
+
+void SSDBServer::resetsync() {
+	log_info("resetsync called");
+	std::vector<Slave *>::iterator it;
+	for(it = slaves.begin(); it != slaves.end(); it++){
+		Slave *slave = *it;
+		slave->last_seq = 0;
+		slave->last_key = "";
+		slave->save_status();
+		slave->stop();
+		delete slave;
+	}
+	slaves.clear();
+	log_info("resetsync cleared slaves!2");
+	delete backend_sync;
+	
+	log_info("resetsync deleted backend_sync");
+	backend_sync = new BackendSync(this->ssdb, this->sync_speed);
+	log_info("resetsync created new backend_sync");
+	
+	{ // slaves
+		const Config *repl_conf = this->cfg->get("replication");
+		if(repl_conf != NULL){
+			std::vector<Config *> children = repl_conf->children;
+			for(std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++){
+				Config *c = *it;
+				if(c->key != "slaveof"){
+					continue;
+				}
+				std::string ip = c->get_str("ip");
+				int port = c->get_num("port");
+				if(ip == ""){
+					ip = c->get_str("host");
+				}
+				if(ip == "" || port <= 0 || port > 65535){
+					continue;
+				}
+				bool is_mirror = false;
+				std::string type = c->get_str("type");
+				if(type == "mirror"){
+					is_mirror = true;
+				}else{
+					type = "sync";
+					is_mirror = false;
+				}
+				
+				std::string id = c->get_str("id");
+				int recv_timeout = c->get_num("recv_timeout");
+				
+				log_info("slaveof: %s:%d, type: %s", ip.c_str(), port, type.c_str());
+				Slave *slave = new Slave(ssdb, meta, ip.c_str(), port, is_mirror);
+				if(!id.empty()){
+					slave->set_id(id);
+				}
+				if(recv_timeout > 0){
+					slave->recv_timeout = recv_timeout;
+				}
+				slave->auth = c->get_str("auth");
+				slave->start();
+				slaves.push_back(slave);
+			}
+		}
+	}
+
+
+	log_info("resetsync started new slaves");
+	
+}
+
 SSDBServer::~SSDBServer(){
 	std::vector<Slave *>::iterator it;
 	for(it = slaves.begin(); it != slaves.end(); it++){
@@ -397,6 +473,13 @@ bool SSDBServer::in_kv_range(const std::string &key){
 }
 
 /*********************/
+
+int proc_resetsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	serv->resetsync();
+	resp->push_back("ok");	
+	return 0;
+}
 
 int proc_clear_binlog(NetworkServer *net, Link *link, const Request &req, Response *resp){
 	SSDBServer *serv = (SSDBServer *)net->data;

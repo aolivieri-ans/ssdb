@@ -16,8 +16,6 @@ found in the LICENSE file.
 
 class Slave{
 private:
-	uint64_t last_seq;
-	std::string last_key;
 	uint64_t copy_count;
 	uint64_t sync_count;
 		
@@ -42,7 +40,6 @@ private:
 
 	std::string status_key();
 	void load_status();
-	void save_status();
 
 	volatile bool thread_quit;
 	pthread_t run_thread_tid;
@@ -68,6 +65,15 @@ public:
 	~Slave();
 	void start();
 	void stop();
+	
+	uint64_t last_seq;
+	std::string last_key;
+	std::string get_id();
+	bool get_is_mirror();
+	std::string get_host();
+	int get_port();
+	
+	void save_status();
 		
 	void set_id(const std::string &id);
 	std::string stats() const;

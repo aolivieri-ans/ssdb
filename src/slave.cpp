@@ -110,6 +110,23 @@ void Slave::set_id(const std::string &id){
 	this->id_ = id;
 }
 
+
+std::string Slave::get_id() {
+	return this->id_;
+}
+
+bool Slave::get_is_mirror() {
+	return this->is_mirror;
+}
+
+std::string Slave::get_host(){
+	return this->master_ip;
+}
+
+int Slave::get_port(){
+	return this->master_port;
+}
+
 void Slave::migrate_old_status(){
 	std::string old_key = "new.slave.status|" + this->id_;
 	std::string val;

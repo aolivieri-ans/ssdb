@@ -26,6 +26,10 @@ private:
 	std::string kv_range_s;
 	std::string kv_range_e;
 	
+	
+	const Config *cfg;
+	int sync_speed;
+	
 	SSDB *meta;
 
 public:
@@ -43,6 +47,7 @@ public:
 	int get_kv_range(std::string *s, std::string *e);
 	bool in_kv_range(const std::string &key);
 	bool in_kv_range(const Bytes &key);
+	void resetsync();
 };
 
 

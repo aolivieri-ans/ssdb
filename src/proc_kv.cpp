@@ -8,6 +8,22 @@ found in the LICENSE file.
 #include "net/proc.h"
 #include "net/server.h"
 
+int proc_incrwithlimit(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	CHECK_NUM_PARAMS(5);
+	CHECK_KV_KEY_RANGE(1);
+	int64_t restart;
+	int ret = serv->ssdb->incrwithlimit(req[1], req[2].Int(), req[3].Int(), req[4].Int(), &restart);
+	if(ret == 0){
+		resp->reply_status(-1, "value is not an integer or out of range");
+	}else{
+		printf("reply: %d\n",restart);
+		resp->reply_int(ret, restart);
+	}	
+	return 0;	
+}
+
+
 int proc_get(NetworkServer *net, Link *link, const Request &req, Response *resp){
 	SSDBServer *serv = (SSDBServer *)net->data;
 	CHECK_NUM_PARAMS(2);

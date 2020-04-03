@@ -63,6 +63,7 @@ public:
 	virtual int del(const Bytes &key, char log_type=BinlogType::SYNC);
 	// -1: error, 1: ok, 0: value is not an integer or out of range
 	virtual int incr(const Bytes &key, int64_t by, int64_t *new_val, char log_type=BinlogType::SYNC);
+	virtual int incrwithlimit(const Bytes &key, int64_t by, int64_t limit, int64_t start, int64_t *new_val, char log_type=BinlogType::SYNC);
 	virtual int multi_set(const std::vector<Bytes> &kvs, int offset=0, char log_type=BinlogType::SYNC);
 	virtual int multi_del(const std::vector<Bytes> &keys, int offset=0, char log_type=BinlogType::SYNC);
 	virtual int setbit(const Bytes &key, int bitoffset, int on, char log_type=BinlogType::SYNC);
