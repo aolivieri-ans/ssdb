@@ -48,6 +48,9 @@ public:
 	bool in_kv_range(const std::string &key);
 	bool in_kv_range(const Bytes &key);
 	void resetsync();
+	void stopsync();
+	void startsync();
+	void resetcopy();
 };
 
 
