@@ -86,7 +86,9 @@ std::string Slave::stats() const{
 
 void Slave::start(){
 	migrate_old_status();
+
 	load_status();
+
 	log_debug("last_seq: %" PRIu64 ", last_key: %s",
 		last_seq, hexmem(last_key.data(), last_key.size()).c_str());
 
@@ -202,8 +204,9 @@ int Slave::connect(){
 					return -1;
 				}
 			}
-			
+			log_info("call sync140 with last_key=%s", this->last_key);
 			link->send("sync140", str(this->last_seq), this->last_key, type);
+			
 			if(link->flush() == -1){
 				log_error("[%s] network error", this->id_.c_str());
 				delete link;
