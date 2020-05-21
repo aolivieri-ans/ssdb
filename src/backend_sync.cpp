@@ -11,10 +11,12 @@ found in the LICENSE file.
 #include "util/log.h"
 #include "util/strings.h"
 
-BackendSync::BackendSync(SSDBImpl *ssdb, int sync_speed){
+BackendSync::BackendSync(SSDBImpl *ssdb, int sync_speed, bool doResetSync, bool doResetCopy){
 	thread_quit = false;
 	this->ssdb = ssdb;
 	this->sync_speed = sync_speed;
+	this->resetSync = doResetSync;
+	this->resetCopy = doResetCopy;
 }
 
 BackendSync::~BackendSync(){
@@ -27,7 +29,7 @@ BackendSync::~BackendSync(){
 		{
 			Locking l(&mutex);
 			if(workers.empty()){
-				break;
+				//break;
 			}
 		}
 		usleep(50 * 1000);
@@ -212,6 +214,16 @@ void BackendSync::Client::init(){
 		}
 	}
 	
+	if (this->backend->resetSync) {
+		log_info("BackendSync::Client::init requested resetSync=true, ignoring received last_seq and setting last_seq=0");
+		last_seq = 0;
+	}
+	
+	if (this->backend->resetCopy) {
+		log_info("BackendSync::Client::init requested resetCopy=true, ignoring received last_key and setting last_key=''");
+		last_key = "";
+	}
+	
 	SSDBImpl *ssdb = (SSDBImpl *)backend->ssdb;
 	BinlogQueue *logs = ssdb->binlogs;
 	if(last_seq != 0 && (last_seq > logs->max_seq() || last_seq < logs->min_seq())){
@@ -300,6 +312,10 @@ int BackendSync::Client::copy(){
 	int iterate_count = 0;
 	int64_t stime = time_ms();
 	while(true){
+		if (backend->thread_quit){
+			break;
+		}
+		
 		// Prevent copy() from blocking too long
 		if(++iterate_count > 1000 || link->output->size() > 2 * 1024 * 1024){
 			break;
@@ -361,6 +377,9 @@ copy_end:
 int BackendSync::Client::sync(BinlogQueue *logs){
 	Binlog log;
 	while(1){
+		if (backend->thread_quit){
+			break;
+		}		
 		int ret = 0;
 		uint64_t expect_seq = this->last_seq + 1;
 		if(this->status == Client::COPY && this->last_seq == 0){
