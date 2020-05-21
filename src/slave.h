@@ -72,7 +72,7 @@ public:
 	bool get_is_mirror();
 	std::string get_host();
 	int get_port();
-	
+	void reset_last_key();
 	void save_status();
 		
 	void set_id(const std::string &id);
