@@ -51,6 +51,7 @@ public:
 	void stopsync();
 	void startsync();
 	void resetcopy();
+
 };
 
 
