@@ -8,6 +8,12 @@ found in the LICENSE file.
 #include "net/proc.h"
 #include "net/server.h"
 
+DEF_PROC(startsync);
+DEF_PROC(stopsync);
+DEF_PROC(resetsync);
+DEF_PROC(resetcopy);
+DEF_PROC(incrwithlimit);
+
 DEF_PROC(flushdb);
 DEF_PROC(info);
 DEF_PROC(version);

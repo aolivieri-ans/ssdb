@@ -139,6 +139,13 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(get_key_range, "r");
 	REG_PROC(get_kv_range, "r");
 	REG_PROC(set_kv_range, "r");
+
+
+	REG_PROC(resetsync, "w");		
+	REG_PROC(resetcopy, "w");		
+	
+	REG_PROC(stopsync, "w");		
+	REG_PROC(startsync, "w");	
 }
 
 
@@ -484,3 +491,30 @@ bool SSDBServer::in_kv_range(const std::string &key){
 	return true;
 }
 
+int proc_startsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	serv->startsync();
+	resp->push_back("ok");	
+	return 0;
+}
+
+int proc_stopsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	serv->stopsync();
+	resp->push_back("ok");	
+	return 0;
+}
+int proc_resetcopy(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	serv->resetcopy();
+	resp->push_back("ok");	
+	return 0;
+}
+
+
+int proc_resetsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+	SSDBServer *serv = (SSDBServer *)net->data;
+	serv->resetsync();
+	resp->push_back("ok");	
+	return 0;
+}
