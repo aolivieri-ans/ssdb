@@ -16,13 +16,13 @@ function save_cli_history(histfile){
 try{
 	import readline;
 	import atexit;
-	histfile = '/tmp/ssdb-cli.history';
+	histfile = os.path.expanduser('~/.ssdb-cli_history');
 	if(os.path.isfile(histfile)){
 		readline.read_history_file(histfile);
 	}
 	atexit.register(save_cli_history, histfile);
 }catch(Exception e){
-	sys.stderr.write(str(e) + '\n');
+	sys.stderr.write('readline: ' + str(e) + '\n');
 }
 
 escape_data = false;
@@ -167,7 +167,12 @@ try{
 }catch(socket.error e){
 	sys.stderr.write(sprintf('Failed to connect to: %s:%d\n', host, port));
 	sys.stderr.write(sprintf('Connection error: %s\n', str(e)));
-	sys.exit(0);
+	if(run_nagios){
+		sys.stdout.write(sprintf('CRITICAL: Failed to connect\n'));
+		sys.exit(2);
+	} else {
+		sys.exit(0);
+	}
 }
 
 if(run_nagios){

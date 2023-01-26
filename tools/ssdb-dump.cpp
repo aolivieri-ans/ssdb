@@ -20,7 +20,7 @@ found in the LICENSE file.
 #include "net/link.h"
 #include "util/log.h"
 #include "util/file.h"
-#include "util/strings.h"
+#include "util/string_util.h"
 
 struct Config {
 	std::string ip;
@@ -176,6 +176,7 @@ int main(int argc, char **argv){
 	leveldb::Status status;
 	options.create_if_missing = true;
 	options.write_buffer_size = 32 * 1024 * 1024;
+	options.max_file_size = 32 * 1048576; // leveldb 1.20
 	options.compression = leveldb::kSnappyCompression;
 
 	status = leveldb::DB::Open(options, data_dir.c_str(), &db);

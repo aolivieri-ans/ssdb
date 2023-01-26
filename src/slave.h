@@ -60,6 +60,8 @@ public:
 	// after this time, the slave will disconnect from master.
 	// in seconds, default 30
 	int recv_timeout;
+	uint64_t last_seq;
+	std::string last_key;
 	std::string auth;
 	Slave(SSDB *ssdb, SSDB *meta, const char *ip, int port, bool is_mirror=false);
 	~Slave();

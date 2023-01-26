@@ -8,6 +8,7 @@ found in the LICENSE file.
 
 #include "leveldb/db.h"
 #include "leveldb/slice.h"
+#include "../include.h"
 #include "../util/log.h"
 #include "../util/config.h"
 
@@ -93,6 +94,7 @@ public:
 			std::vector<std::string> *list);
 	virtual HIterator* hscan(const Bytes &name, const Bytes &start, const Bytes &end, uint64_t limit);
 	virtual HIterator* hrscan(const Bytes &name, const Bytes &start, const Bytes &end, uint64_t limit);
+	virtual int64_t hfix(const Bytes &name);
 
 	/* zset */
 

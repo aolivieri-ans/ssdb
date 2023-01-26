@@ -104,10 +104,12 @@ int64_t SSDBImpl::hsize(const Bytes &name){
 
 int64_t SSDBImpl::hclear(const Bytes &name){
 	int64_t count = 0;
+	std::string start;
 	while(1){
-		HIterator *it = this->hscan(name, "", "", 1000);
+		HIterator *it = this->hscan(name, start, "", 10000);
 		int num = 0;
 		while(it->next()){
+			start = it->key;
 			int ret = this->hdel(name, it->key);
 			if(ret == -1){
 				delete it;
@@ -279,4 +281,24 @@ static int incr_hsize(SSDBImpl *ssdb, const Bytes &name, int64_t incr){
 		ssdb->binlogs->Put(size_key, leveldb::Slice((char *)&size, sizeof(int64_t)));
 	}
 	return 0;
+}
+
+int64_t SSDBImpl::hfix(const Bytes &name){
+	Transaction trans(binlogs);
+
+	uint64_t size = 0;
+	HIterator *it = this->hscan(name, "", "", UINT64_MAX);
+	while(it->next()){
+		size ++;
+	}
+	delete it;
+
+	std::string size_key = encode_hsize_key(name);
+	if(size == 0){
+		ldb->Delete(leveldb::WriteOptions(), size_key);
+	}else{
+		ldb->Put(leveldb::WriteOptions(), size_key, leveldb::Slice((char *)&size, sizeof(int64_t)));
+	}
+	
+	return size;
 }

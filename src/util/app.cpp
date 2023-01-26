@@ -3,7 +3,7 @@
 #include "file.h"
 #include "config.h"
 #include "daemon.h"
-#include "strings.h"
+#include "string_util.h"
 #include <stdio.h>
 
 int Application::main(int argc, char **argv){
@@ -147,9 +147,6 @@ int Application::read_pid(){
 }
 
 void Application::write_pid(){
-	if(!app_args.is_daemon){
-		return;
-	}
 	if(app_args.pidfile.empty()){
 		return;
 	}
@@ -163,9 +160,6 @@ void Application::write_pid(){
 }
 
 void Application::check_pidfile(){
-	if(!app_args.is_daemon){
-		return;
-	}
 	if(app_args.pidfile.size()){
 		if(access(app_args.pidfile.c_str(), F_OK) == 0){
 			fprintf(stderr, "Fatal error!\nPidfile %s already exists!\n"
@@ -178,9 +172,6 @@ void Application::check_pidfile(){
 }
 
 void Application::remove_pidfile(){
-	if(!app_args.is_daemon){
-		return;
-	}
 	if(app_args.pidfile.size()){
 		remove(app_args.pidfile.c_str());
 	}

@@ -1,3 +1,24 @@
+* 1.9.9
+	* Bug fixeds:
+		- Fix binlog resource leak bug(2020-09-25)
+* 1.9.8
+	* New features:
+		- optimize hclear performance(2020-07-31)
+		- ssdb-repair/ssdb-dump set leveldb.option.max_file_size to 32MB(2020-07-30)
+		- Support multi auth password configs(2020-05-10)
+		- Support IP v6(2020-02-15)
+		- Add add_slave and del_slave command(2020-02-19)
+	* Bug fixes:
+		- Fix `hfix` bug(2020-08-10)
+* 1.9.7
+	* New features:
+		- Support slaveof command(2018-04-27)
+		- Add hfix command(2018-11-21)
+	* Bug fixes:
+		- Fix queue/list replication bug(2019-01-02)
+		- Fix logrotate issue when log to stdout/stderr(2018-06-05)
+		- Fix coredump on exit(2018-07-18)
+		- Fix startup blocked by BinlogQueue::find_last()(2018-08-08)
 * 1.9.6
 	* New features:
 		- ssdb-cli supports command history(2018-04-24)

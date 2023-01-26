@@ -62,6 +62,7 @@ class SSDB_Response
 	}
 }
 
+// Depricated, use SimpleSSDB instead!
 class SSDB
 {
 	private $debug = false;
@@ -73,7 +74,7 @@ class SSDB
 
 	function __construct($host, $port, $timeout_ms=2000){
 		$timeout_f = (float)$timeout_ms/1000;
-		$this->sock = @stream_socket_client("$host:$port", $errno, $errstr, $timeout_f);
+		$this->sock = @stream_socket_client("[$host]:$port", $errno, $errstr, $timeout_f);
 		if(!$this->sock){
 			throw new SSDBException("$errno: $errstr");
 		}

@@ -9,7 +9,7 @@ found in the LICENSE file.
 #include <string>
 #include "backend_sync.h"
 #include "util/log.h"
-#include "util/strings.h"
+#include "util/string_util.h"
 
 BackendSync::BackendSync(SSDBImpl *ssdb, int sync_speed, bool doResetSync, bool doResetCopy){
 	thread_quit = false;
@@ -439,9 +439,6 @@ int BackendSync::Client::sync(BinlogQueue *logs){
 		case BinlogCommand::KSET:
 		case BinlogCommand::HSET:
 		case BinlogCommand::ZSET:
-		case BinlogCommand::QSET:
-		case BinlogCommand::QPUSH_BACK:
-		case BinlogCommand::QPUSH_FRONT:
 			ret = backend->ssdb->raw_get(log.key(), &val);
 			if(ret == -1){
 				log_error("fd: %d, raw_get error!", link->fd());
@@ -449,6 +446,18 @@ int BackendSync::Client::sync(BinlogQueue *logs){
 				//log_debug("%s", hexmem(log.key().data(), log.key().size()).c_str());
 				log_trace("fd: %d, skip not found: %s", link->fd(), log.dumps().c_str());
 			}else{
+				log_trace("fd: %d, %s", link->fd(), log.dumps().c_str());
+				link->send(log.repr(), val);
+			}
+			break;
+		case BinlogCommand::QSET:
+		case BinlogCommand::QPUSH_BACK:
+		case BinlogCommand::QPUSH_FRONT:
+			ret = backend->ssdb->raw_get(log.key(), &val);
+			if(ret == -1){
+				log_error("fd: %d, raw_get error!", link->fd());
+			}else{
+				// ret == 0: element popped, push an empty value(pop later in binlog)
 				log_trace("fd: %d, %s", link->fd(), log.dumps().c_str());
 				link->send(log.repr(), val);
 			}
