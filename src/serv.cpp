@@ -62,6 +62,7 @@ DEF_PROC(multi_hsize);
 DEF_PROC(multi_hget);
 DEF_PROC(multi_hset);
 DEF_PROC(multi_hdel);
+DEF_PROC(multi_hincr);
 
 DEF_PROC(zrank);
 DEF_PROC(zrrank);
@@ -95,7 +96,7 @@ DEF_PROC(multi_zset);
 DEF_PROC(multi_zdel);
 DEF_PROC(zpop_front);
 DEF_PROC(zpop_back);
-	
+
 DEF_PROC(qsize);
 DEF_PROC(qfront);
 DEF_PROC(qback);
@@ -137,10 +138,10 @@ DEF_PROC(cluster_set_kv_range);
 DEF_PROC(cluster_set_kv_status);
 DEF_PROC(cluster_migrate_kv_data);
 
+#define REG_PROC(c, f) net->proc_map.set_proc(#c, f, proc_##c)
 
-#define REG_PROC(c, f)     net->proc_map.set_proc(#c, f, proc_##c)
-
-void SSDBServer::reg_procs(NetworkServer *net){
+void SSDBServer::reg_procs(NetworkServer *net)
+{
 	REG_PROC(get, "rt");
 	REG_PROC(set, "wt");
 	REG_PROC(del, "wt");
@@ -155,7 +156,7 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(strlen, "rt");
 	REG_PROC(bitcount, "rt");
 	REG_PROC(incr, "wt");
-	REG_PROC(incrwithlimit, "wt");	
+	REG_PROC(incrwithlimit, "wt");
 	REG_PROC(decr, "wt");
 	REG_PROC(scan, "rt");
 	REG_PROC(rscan, "rt");
@@ -189,6 +190,7 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(multi_hget, "rt");
 	REG_PROC(multi_hset, "wt");
 	REG_PROC(multi_hdel, "wt");
+	REG_PROC(multi_hincr, "wt");
 
 	// because zrank may be extremly slow, execute in a seperate thread
 	REG_PROC(zrank, "rt");
@@ -267,16 +269,16 @@ void SSDBServer::reg_procs(NetworkServer *net){
 	REG_PROC(cluster_set_kv_range, "r");
 	REG_PROC(cluster_set_kv_status, "r");
 	REG_PROC(cluster_migrate_kv_data, "r");
-	
-	REG_PROC(resetsync, "w");		
-	REG_PROC(resetcopy, "w");		
-	
-	REG_PROC(stopsync, "w");		
-	REG_PROC(startsync, "w");		
+
+	REG_PROC(resetsync, "w");
+	REG_PROC(resetcopy, "w");
+
+	REG_PROC(stopsync, "w");
+	REG_PROC(startsync, "w");
 }
 
-
-SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer *net){
+SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer *net)
+{
 	this->ssdb = (SSDBImpl *)ssdb;
 	this->meta = meta;
 
@@ -289,48 +291,59 @@ SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer
 	backend_dump = new BackendDump(this->ssdb);
 	backend_sync = new BackendSync(this->ssdb, this->sync_speed);
 	expiration = new ExpirationHandler(this->ssdb);
-	
+
 	cluster = new Cluster(this->ssdb);
-	if(cluster->init() == -1){
+	if (cluster->init() == -1)
+	{
 		log_fatal("cluster init failed!");
 		exit(1);
 	}
 
 	{ // slaves
 		const Config *repl_conf = conf.get("replication");
-		if(repl_conf != NULL){
+		if (repl_conf != NULL)
+		{
 			std::vector<Config *> children = repl_conf->children;
-			for(std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++){
+			for (std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++)
+			{
 				Config *c = *it;
-				if(c->key != "slaveof"){
+				if (c->key != "slaveof")
+				{
 					continue;
 				}
 				std::string ip = c->get_str("ip");
 				int port = c->get_num("port");
-				if(ip == ""){
+				if (ip == "")
+				{
 					ip = c->get_str("host");
 				}
-				if(ip == "" || port <= 0 || port > 65535){
+				if (ip == "" || port <= 0 || port > 65535)
+				{
 					continue;
 				}
 				bool is_mirror = false;
 				std::string type = c->get_str("type");
-				if(type == "mirror"){
+				if (type == "mirror")
+				{
 					is_mirror = true;
-				}else{
+				}
+				else
+				{
 					type = "sync";
 					is_mirror = false;
 				}
-				
+
 				std::string id = c->get_str("id");
 				int recv_timeout = c->get_num("recv_timeout");
-				
+
 				log_info("slaveof: %s:%d, type: %s", ip.c_str(), port, type.c_str());
 				Slave *slave = new Slave(ssdb, meta, ip.c_str(), port, is_mirror);
-				if(!id.empty()){
+				if (!id.empty())
+				{
 					slave->set_id(id);
 				}
-				if(recv_timeout > 0){
+				if (recv_timeout > 0)
+				{
 					slave->recv_timeout = recv_timeout;
 				}
 				slave->auth = c->get_str("auth");
@@ -342,21 +355,22 @@ SSDBServer::SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer
 
 	// load kv_range
 	int ret = this->get_kv_range(&this->kv_range_s, &this->kv_range_e);
-	if(ret == -1){
+	if (ret == -1)
+	{
 		log_fatal("load key_range failed!");
 		exit(1);
 	}
 	log_info("key_range.kv: \"%s\", \"%s\"",
-		str_escape(this->kv_range_s).c_str(),
-		str_escape(this->kv_range_e).c_str()
-		);
+			 str_escape(this->kv_range_s).c_str(),
+			 str_escape(this->kv_range_e).c_str());
 }
 
-
-void SSDBServer::stopsync() {
+void SSDBServer::stopsync()
+{
 	log_info("stopsync called");
 	std::vector<Slave *>::iterator it;
-	for(it = slaves.begin(); it != slaves.end(); it++){
+	for (it = slaves.begin(); it != slaves.end(); it++)
+	{
 		Slave *slave = *it;
 		slave->last_seq = 0;
 		slave->last_key = "";
@@ -367,49 +381,60 @@ void SSDBServer::stopsync() {
 	slaves.clear();
 	log_info("stopsync cleared slaves!");
 	delete backend_sync;
-	
+
 	log_info("stopsync deleted backend_sync");
 }
 
-void SSDBServer::startsync() {
+void SSDBServer::startsync()
+{
 	backend_sync = new BackendSync(this->ssdb, this->sync_speed);
 	log_info("startsync created new backend_sync");
-	
+
 	{ // slaves
 		const Config *repl_conf = this->cfg->get("replication");
-		if(repl_conf != NULL){
+		if (repl_conf != NULL)
+		{
 			std::vector<Config *> children = repl_conf->children;
-			for(std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++){
+			for (std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++)
+			{
 				Config *c = *it;
-				if(c->key != "slaveof"){
+				if (c->key != "slaveof")
+				{
 					continue;
 				}
 				std::string ip = c->get_str("ip");
 				int port = c->get_num("port");
-				if(ip == ""){
+				if (ip == "")
+				{
 					ip = c->get_str("host");
 				}
-				if(ip == "" || port <= 0 || port > 65535){
+				if (ip == "" || port <= 0 || port > 65535)
+				{
 					continue;
 				}
 				bool is_mirror = false;
 				std::string type = c->get_str("type");
-				if(type == "mirror"){
+				if (type == "mirror")
+				{
 					is_mirror = true;
-				}else{
+				}
+				else
+				{
 					type = "sync";
 					is_mirror = false;
 				}
-				
+
 				std::string id = c->get_str("id");
 				int recv_timeout = c->get_num("recv_timeout");
-				
+
 				log_info("slaveof: %s:%d, type: %s", ip.c_str(), port, type.c_str());
 				Slave *slave = new Slave(ssdb, meta, ip.c_str(), port, is_mirror);
-				if(!id.empty()){
+				if (!id.empty())
+				{
 					slave->set_id(id);
 				}
-				if(recv_timeout > 0){
+				if (recv_timeout > 0)
+				{
 					slave->recv_timeout = recv_timeout;
 				}
 				slave->auth = c->get_str("auth");
@@ -419,14 +444,15 @@ void SSDBServer::startsync() {
 		}
 	}
 
-
-	log_info("startsync started new slaves");	
+	log_info("startsync started new slaves");
 }
 
-void SSDBServer::resetsync() {
+void SSDBServer::resetsync()
+{
 	log_info("resetsync called");
 	std::vector<Slave *>::iterator it;
-	for(it = slaves.begin(); it != slaves.end(); it++){
+	for (it = slaves.begin(); it != slaves.end(); it++)
+	{
 		Slave *slave = *it;
 		slave->last_seq = 0;
 		slave->last_key = "";
@@ -437,46 +463,56 @@ void SSDBServer::resetsync() {
 	slaves.clear();
 	log_info("resetsync cleared slaves!2");
 	delete backend_sync;
-	
+
 	log_info("resetsync deleted backend_sync");
 	backend_sync = new BackendSync(this->ssdb, this->sync_speed, true, false);
 	log_info("resetsync created new backend_sync");
-	
+
 	{ // slaves
 		const Config *repl_conf = this->cfg->get("replication");
-		if(repl_conf != NULL){
+		if (repl_conf != NULL)
+		{
 			std::vector<Config *> children = repl_conf->children;
-			for(std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++){
+			for (std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++)
+			{
 				Config *c = *it;
-				if(c->key != "slaveof"){
+				if (c->key != "slaveof")
+				{
 					continue;
 				}
 				std::string ip = c->get_str("ip");
 				int port = c->get_num("port");
-				if(ip == ""){
+				if (ip == "")
+				{
 					ip = c->get_str("host");
 				}
-				if(ip == "" || port <= 0 || port > 65535){
+				if (ip == "" || port <= 0 || port > 65535)
+				{
 					continue;
 				}
 				bool is_mirror = false;
 				std::string type = c->get_str("type");
-				if(type == "mirror"){
+				if (type == "mirror")
+				{
 					is_mirror = true;
-				}else{
+				}
+				else
+				{
 					type = "sync";
 					is_mirror = false;
 				}
-				
+
 				std::string id = c->get_str("id");
 				int recv_timeout = c->get_num("recv_timeout");
-				
+
 				log_info("slaveof: %s:%d, type: %s", ip.c_str(), port, type.c_str());
 				Slave *slave = new Slave(ssdb, meta, ip.c_str(), port, is_mirror);
-				if(!id.empty()){
+				if (!id.empty())
+				{
 					slave->set_id(id);
 				}
-				if(recv_timeout > 0){
+				if (recv_timeout > 0)
+				{
 					slave->recv_timeout = recv_timeout;
 				}
 				slave->auth = c->get_str("auth");
@@ -486,15 +522,15 @@ void SSDBServer::resetsync() {
 		}
 	}
 
-
 	log_info("resetsync started new slaves");
-	
 }
 
-void SSDBServer::resetcopy() {
+void SSDBServer::resetcopy()
+{
 	log_info("resetcopy called");
 	std::vector<Slave *>::iterator it;
-	for(it = slaves.begin(); it != slaves.end(); it++){
+	for (it = slaves.begin(); it != slaves.end(); it++)
+	{
 		Slave *slave = *it;
 		slave->last_seq = 0;
 		slave->last_key = "";
@@ -505,46 +541,56 @@ void SSDBServer::resetcopy() {
 	slaves.clear();
 	log_info("resetcopy cleared slaves!2");
 	delete backend_sync;
-	
+
 	log_info("resetcopy deleted backend_sync");
 	backend_sync = new BackendSync(this->ssdb, this->sync_speed, false, true);
 	log_info("resetcopy created new backend_sync");
-	
+
 	{ // slaves
 		const Config *repl_conf = this->cfg->get("replication");
-		if(repl_conf != NULL){
+		if (repl_conf != NULL)
+		{
 			std::vector<Config *> children = repl_conf->children;
-			for(std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++){
+			for (std::vector<Config *>::iterator it = children.begin(); it != children.end(); it++)
+			{
 				Config *c = *it;
-				if(c->key != "slaveof"){
+				if (c->key != "slaveof")
+				{
 					continue;
 				}
 				std::string ip = c->get_str("ip");
 				int port = c->get_num("port");
-				if(ip == ""){
+				if (ip == "")
+				{
 					ip = c->get_str("host");
 				}
-				if(ip == "" || port <= 0 || port > 65535){
+				if (ip == "" || port <= 0 || port > 65535)
+				{
 					continue;
 				}
 				bool is_mirror = false;
 				std::string type = c->get_str("type");
-				if(type == "mirror"){
+				if (type == "mirror")
+				{
 					is_mirror = true;
-				}else{
+				}
+				else
+				{
 					type = "sync";
 					is_mirror = false;
 				}
-				
+
 				std::string id = c->get_str("id");
 				int recv_timeout = c->get_num("recv_timeout");
-				
+
 				log_info("slaveof: %s:%d, type: %s", ip.c_str(), port, type.c_str());
 				Slave *slave = new Slave(ssdb, meta, ip.c_str(), port, is_mirror);
-				if(!id.empty()){
+				if (!id.empty())
+				{
 					slave->set_id(id);
 				}
-				if(recv_timeout > 0){
+				if (recv_timeout > 0)
+				{
 					slave->recv_timeout = recv_timeout;
 				}
 				slave->auth = c->get_str("auth");
@@ -555,14 +601,13 @@ void SSDBServer::resetcopy() {
 	}
 
 	log_info("resetcopy started new slaves");
-	
 }
 
-
-
-SSDBServer::~SSDBServer(){
+SSDBServer::~SSDBServer()
+{
 	std::vector<Slave *>::iterator it;
-	for(it = slaves.begin(); it != slaves.end(); it++){
+	for (it = slaves.begin(); it != slaves.end(); it++)
+	{
 		Slave *slave = *it;
 		slave->stop();
 		delete slave;
@@ -576,11 +621,14 @@ SSDBServer::~SSDBServer(){
 	log_debug("SSDBServer finalized");
 }
 
-int SSDBServer::set_kv_range(const std::string &start, const std::string &end){
-	if(meta->hset("key_range", "kv_s", start) == -1){
+int SSDBServer::set_kv_range(const std::string &start, const std::string &end)
+{
+	if (meta->hset("key_range", "kv_s", start) == -1)
+	{
 		return -1;
 	}
-	if(meta->hset("key_range", "kv_e", end) == -1){
+	if (meta->hset("key_range", "kv_e", end) == -1)
+	{
 		return -1;
 	}
 
@@ -589,28 +637,31 @@ int SSDBServer::set_kv_range(const std::string &start, const std::string &end){
 	return 0;
 }
 
-int SSDBServer::get_kv_range(std::string *start, std::string *end){
-	if(meta->hget("key_range", "kv_s", start) == -1){
+int SSDBServer::get_kv_range(std::string *start, std::string *end)
+{
+	if (meta->hget("key_range", "kv_s", start) == -1)
+	{
 		return -1;
 	}
-	if(meta->hget("key_range", "kv_e", end) == -1){
+	if (meta->hget("key_range", "kv_e", end) == -1)
+	{
 		return -1;
 	}
 	return 0;
 }
 
-bool SSDBServer::in_kv_range(const Bytes &key){
-	if((this->kv_range_s.size() && this->kv_range_s >= key)
-		|| (this->kv_range_e.size() && this->kv_range_e < key))
+bool SSDBServer::in_kv_range(const Bytes &key)
+{
+	if ((this->kv_range_s.size() && this->kv_range_s >= key) || (this->kv_range_e.size() && this->kv_range_e < key))
 	{
 		return false;
 	}
 	return true;
 }
 
-bool SSDBServer::in_kv_range(const std::string &key){
-	if((this->kv_range_s.size() && this->kv_range_s >= key)
-		|| (this->kv_range_e.size() && this->kv_range_e < key))
+bool SSDBServer::in_kv_range(const std::string &key)
+{
+	if ((this->kv_range_s.size() && this->kv_range_s >= key) || (this->kv_range_e.size() && this->kv_range_e < key))
 	{
 		return false;
 	}
@@ -618,44 +669,50 @@ bool SSDBServer::in_kv_range(const std::string &key){
 }
 
 /*********************/
-int proc_startsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+int proc_startsync(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->startsync();
-	resp->push_back("ok");	
+	resp->push_back("ok");
 	return 0;
 }
 
-int proc_stopsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+int proc_stopsync(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->stopsync();
-	resp->push_back("ok");	
+	resp->push_back("ok");
 	return 0;
 }
-int proc_resetcopy(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+int proc_resetcopy(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->resetcopy();
-	resp->push_back("ok");	
+	resp->push_back("ok");
 	return 0;
 }
 
-
-int proc_resetsync(NetworkServer *net, Link *link, const Request &req, Response *resp) {
+int proc_resetsync(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->resetsync();
-	resp->push_back("ok");	
+	resp->push_back("ok");
 	return 0;
 }
 
-int proc_clear_binlog(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_clear_binlog(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->ssdb->binlogs->flush();
 	resp->push_back("ok");
 	return 0;
 }
 
-int proc_flushdb(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_flushdb(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
-	if(serv->slaves.size() > 0 || serv->backend_sync->stats().size() > 0){
+	if (serv->slaves.size() > 0 || serv->backend_sync->stats().size() > 0)
+	{
 		resp->push_back("error");
 		resp->push_back("flushdb is not allowed when replication is in use!");
 		return 0;
@@ -665,39 +722,47 @@ int proc_flushdb(NetworkServer *net, Link *link, const Request &req, Response *r
 	return 0;
 }
 
-int proc_dump(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_dump(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->backend_dump->proc(link);
 	return PROC_BACKEND;
 }
 
-int proc_sync140(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_sync140(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->backend_sync->proc(link);
 	return PROC_BACKEND;
 }
 
-int proc_compact(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_compact(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	serv->ssdb->compact();
 	resp->push_back("ok");
 	return 0;
 }
 
-int proc_ignore_key_range(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_ignore_key_range(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	link->ignore_key_range = true;
 	resp->push_back("ok");
 	return 0;
 }
 
 // get kv_range, hash_range, zset_range, list_range
-int proc_get_key_range(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_get_key_range(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	std::string s, e;
 	int ret = serv->get_kv_range(&s, &e);
-	if(ret == -1){
+	if (ret == -1)
+	{
 		resp->push_back("error");
-	}else{
+	}
+	else
+	{
 		resp->push_back("ok");
 		resp->push_back(s);
 		resp->push_back(e);
@@ -706,13 +771,17 @@ int proc_get_key_range(NetworkServer *net, Link *link, const Request &req, Respo
 	return 0;
 }
 
-int proc_get_kv_range(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_get_kv_range(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	std::string s, e;
 	int ret = serv->get_kv_range(&s, &e);
-	if(ret == -1){
+	if (ret == -1)
+	{
 		resp->push_back("error");
-	}else{
+	}
+	else
+	{
 		resp->push_back("ok");
 		resp->push_back(s);
 		resp->push_back(e);
@@ -720,18 +789,23 @@ int proc_get_kv_range(NetworkServer *net, Link *link, const Request &req, Respon
 	return 0;
 }
 
-int proc_set_kv_range(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_set_kv_range(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
-	if(req.size() != 3){
+	if (req.size() != 3)
+	{
 		resp->push_back("client_error");
-	}else{
+	}
+	else
+	{
 		serv->set_kv_range(req[1].String(), req[2].String());
 		resp->push_back("ok");
 	}
 	return 0;
 }
 
-int proc_dbsize(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_dbsize(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	uint64_t size = serv->ssdb->size();
 	resp->push_back("ok");
@@ -739,13 +813,15 @@ int proc_dbsize(NetworkServer *net, Link *link, const Request &req, Response *re
 	return 0;
 }
 
-int proc_version(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_version(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	resp->push_back("ok");
 	resp->push_back(SSDB_VERSION);
 	return 0;
 }
 
-int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp){
+int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp)
+{
 	SSDBServer *serv = (SSDBServer *)net->data;
 	resp->push_back("ok");
 	resp->push_back("ssdb-server");
@@ -758,14 +834,15 @@ int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp
 	{
 		int64_t calls = 0;
 		proc_map_t::iterator it;
-		for(it=net->proc_map.begin(); it!=net->proc_map.end(); it++){
+		for (it = net->proc_map.begin(); it != net->proc_map.end(); it++)
+		{
 			Command *cmd = it->second;
 			calls += cmd->calls;
 		}
 		resp->push_back("total_calls");
 		resp->add(calls);
 	}
-	
+
 	{
 		uint64_t size = serv->ssdb->size();
 		resp->push_back("dbsize");
@@ -780,7 +857,8 @@ int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp
 	{
 		std::vector<std::string> syncs = serv->backend_sync->stats();
 		std::vector<std::string>::iterator it;
-		for(it = syncs.begin(); it != syncs.end(); it++){
+		for (it = syncs.begin(); it != syncs.end(); it++)
+		{
 			std::string s = *it;
 			resp->push_back("replication");
 			resp->push_back(s);
@@ -788,7 +866,8 @@ int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp
 	}
 	{
 		std::vector<Slave *>::iterator it;
-		for(it = serv->slaves.begin(); it != serv->slaves.end(); it++){
+		for (it = serv->slaves.begin(); it != serv->slaves.end(); it++)
+		{
 			Slave *slave = *it;
 			std::string s = slave->stats();
 			resp->push_back("replication");
@@ -802,9 +881,8 @@ int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp
 		char buf[512];
 		{
 			snprintf(buf, sizeof(buf), "    kv  : \"%s\" - \"%s\"",
-				str_escape(s).c_str(),
-				str_escape(e).c_str()
-				);
+					 str_escape(s).c_str(),
+					 str_escape(e).c_str());
 			val.append(buf);
 		}
 		{
@@ -823,60 +901,62 @@ int proc_info(NetworkServer *net, Link *link, const Request &req, Response *resp
 		resp->push_back(val);
 	}
 
-	if(req.size() == 1 || req[1] == "range"){
+	if (req.size() == 1 || req[1] == "range")
+	{
 		std::string val;
 		std::vector<std::string> tmp;
 		int ret = serv->ssdb->key_range(&tmp);
-		if(ret == 0){
+		if (ret == 0)
+		{
 			char buf[512];
-			
+
 			snprintf(buf, sizeof(buf), "    kv  : \"%s\" - \"%s\"",
-				hexmem(tmp[0].data(), tmp[0].size()).c_str(),
-				hexmem(tmp[1].data(), tmp[1].size()).c_str()
-				);
+					 hexmem(tmp[0].data(), tmp[0].size()).c_str(),
+					 hexmem(tmp[1].data(), tmp[1].size()).c_str());
 			val.append(buf);
-			
+
 			snprintf(buf, sizeof(buf), "\n    hash: \"%s\" - \"%s\"",
-				hexmem(tmp[2].data(), tmp[2].size()).c_str(),
-				hexmem(tmp[3].data(), tmp[3].size()).c_str()
-				);
+					 hexmem(tmp[2].data(), tmp[2].size()).c_str(),
+					 hexmem(tmp[3].data(), tmp[3].size()).c_str());
 			val.append(buf);
-			
+
 			snprintf(buf, sizeof(buf), "\n    zset: \"%s\" - \"%s\"",
-				hexmem(tmp[4].data(), tmp[4].size()).c_str(),
-				hexmem(tmp[5].data(), tmp[5].size()).c_str()
-				);
+					 hexmem(tmp[4].data(), tmp[4].size()).c_str(),
+					 hexmem(tmp[5].data(), tmp[5].size()).c_str());
 			val.append(buf);
-			
+
 			snprintf(buf, sizeof(buf), "\n    list: \"%s\" - \"%s\"",
-				hexmem(tmp[6].data(), tmp[6].size()).c_str(),
-				hexmem(tmp[7].data(), tmp[7].size()).c_str()
-				);
+					 hexmem(tmp[6].data(), tmp[6].size()).c_str(),
+					 hexmem(tmp[7].data(), tmp[7].size()).c_str());
 			val.append(buf);
 		}
 		resp->push_back("data_key_range");
 		resp->push_back(val);
 	}
 
-	if(req.size() == 1 || req[1] == "leveldb"){
+	if (req.size() == 1 || req[1] == "leveldb")
+	{
 		std::vector<std::string> tmp = serv->ssdb->info();
-		for(int i=0; i<(int)tmp.size(); i++){
+		for (int i = 0; i < (int)tmp.size(); i++)
+		{
 			std::string block = tmp[i];
 			resp->push_back(block);
 		}
 	}
 
-	if(req.size() > 1 && req[1] == "cmd"){
+	if (req.size() > 1 && req[1] == "cmd")
+	{
 		proc_map_t::iterator it;
-		for(it=net->proc_map.begin(); it!=net->proc_map.end(); it++){
+		for (it = net->proc_map.begin(); it != net->proc_map.end(); it++)
+		{
 			Command *cmd = it->second;
 			resp->push_back("cmd." + cmd->name);
 			char buf[128];
 			snprintf(buf, sizeof(buf), "calls: %" PRIu64 "\ttime_wait: %.0f\ttime_proc: %.0f",
-				cmd->calls, cmd->time_wait, cmd->time_proc);
+					 cmd->calls, cmd->time_wait, cmd->time_proc);
 			resp->push_back(buf);
 		}
 	}
-	
+
 	return 0;
 }
